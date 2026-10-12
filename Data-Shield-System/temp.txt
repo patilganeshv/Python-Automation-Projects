@@ -1,1 +1,119 @@
+Automated Data Shield
+
+Automated Data Shield is a Python-based periodic backup system that intelligently copies only new or modified files and creates timestamped compressed archives to ensure efficient and reliable data protection.
+
+1. make_zip(folder)
+Creates a timestamped ZIP archive of the given backup folder.
+After copying files into the backup folder, you want a single compressed file (easy to store, transfer, upload, or keep history).
+
+Working
+    •	Generates a timestamp like 2026-02-09_22-15-10
+    -	Builds zip name:  
+    	   BackupFolder_2026-02-09_22-15-10.zip
+    -	Opens zip in write mode with compression (ZIP_DEFLATED)
+    -	Walks through the folder recursively using os.walk()
+    -	For every file:
+        o	full_path = actual file path
+        o	relative = relative path inside zip (so structure stays the same)
+        o	Adds file to zip using zobj.write(full_path, relative)
+    -	Closes zip and returns zip filename.
+
+Output
+   - Returns the created ZIP file name.
+
+2. calculate_hash(path)
+  Computes an MD5 checksum of a file.
+  To detect whether a file has changed:
+    - If a file is modified, its MD5 hash changes.
+    - This allows your script to copy only new/updated files.
+
+Working
+  - Creates an MD5 hash object: hashlib.md5()
+  - Opens file in binary mode ("rb")
+  - Reads file in chunks of 1024 bytes (efficient for large files)
+  - Updates hash with each chunk
+  - Returns final hash using hexdigest()
+
+Output
+  - Returns a string hash like: e4d909c290d0fb1ca068ffaddf22cbd0
+
+3. BackupFiles(Source, Destination)
+  Copies files from Source to Destination, but only if:
+    - The file doesn’t exist in destination, OR
+    - The file exists but content has changed (hash mismatch).
+
+  This is the core “smart backup” logic:
+    - Avoids copying everything every time
+    - Saves time + storage
+    - Behaves like incremental backup
+
+Working
+  - Creates empty list copied_files to track what got copied.
+  - Creates backup folder (Destination) if not present:
+        os.makedirs(Destination, exist_ok=True)
+  - Walks through all files inside Source recursively.
+  - For each file:
+      - Builds src_path
+      - Calculates relative path from Source
+      - Creates matching destination path (keeps folder structure)
+      - Ensures destination subfolder exists: os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+  - Checks copy condition:
+      if (dest not exists) OR (hash(src) != hash(dest))
+  - Copies using shutil.copy2()  
+      (copy2 preserves metadata like timestamps)
+  - Adds relative filename into copied_files
+
+Output
+  Returns list of files that were actually copied.
+
+4. DataShieldStart(Source="Data")
+  This is the main scheduled job function that runs every X minutes.
+  Schedule needs a function to execute periodically. So this function acts like the backup cycle.
+
+Working
+- Prints start banner + time
+- Sets backup folder name: BackupName = "BackupFolder"
+- Calls:
+    1. BackupFiles(Source, BackupName) → performs smart incremental copy
+    2. make_zip(BackupName) → creates zipped archive of backup folder
+- Prints summary:
+  1. Backup completed
+  2. How many files copied
+  3. ZIP file created name
+
+Output
+  No return. It prints status logs for user.
+
+5. main()
+  Handles command-line interface (CLI) and scheduling.
+
+Example:
+  python Demo.py 5 Data
+  Meaning: backup every 5 minutes from Data folder
+
+Logic in main()
+  A) Prints project header
+  B) Handles command-line arguments
+
+Case 1: len(sys.argv) == 2
+  User wants help info.
+    - --h / --H → help information (what script does)
+    - --u / --U → usage format (how to run)
+    - else → invalid option
+
+Case 2: len(sys.argv) == 3
+  This is the real execution mode:
+    python Demo.py 5 Data
+    - sys.argv[1] → interval in minutes
+    - sys.argv[2] → directory name
+  
+  Then scheduling is applied:
+    schedule.every(int(sys.argv[1])).minutes.do(DataShieldStart, sys.argv[2])
+  
+  Then infinite loop:
+    - schedule.run_pending() checks whether job time has come
+    - time.sleep(1) prevents CPU from running at 100%
+
+Case 3: else
+  Invalid number of arguments → shows error.
 
